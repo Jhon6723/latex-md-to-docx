@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
@@ -21,6 +22,14 @@ $$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 ## Tambien funciona con delimitadores de backslash
 
 \\[\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\\]
+
+## Tablas
+
+| Funcion | Derivada |
+| ------- | -------- |
+| $x^n$   | $nx^{n-1}$ |
+| $e^x$   | $e^x$ |
+| $\\sin x$ | $\\cos x$ |
 `;
 
 export default function Home() {
@@ -134,7 +143,7 @@ export default function Home() {
             Vista previa
           </div>
           <article className="prose prose-invert max-w-none flex-1 overflow-y-auto p-6 text-zinc-100 [&_.katex]:text-zinc-100">
-            <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
               {markdown}
             </ReactMarkdown>
           </article>
