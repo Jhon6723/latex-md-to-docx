@@ -1,8 +1,8 @@
-# LaTeX MD → DOCX
+# LaTeX MD → DOCX / PDF
 
-A web app that converts **Markdown files with LaTeX math formulas into Word documents (.docx)** with **native, editable Word equations** (OMML) — not images.
+A web app that converts **Markdown files with LaTeX math formulas into Word documents (.docx) or PDF** — with **native, editable Word equations** (OMML) when exporting to DOCX, and properly typeset math when exporting to PDF.
 
-Built with Next.js (frontend + backend in one app) and [Pandoc](https://pandoc.org) as the conversion engine.
+Built with Next.js (frontend + backend in one app), [Pandoc](https://pandoc.org) as the conversion engine, and [Typst](https://typst.app) as the PDF engine.
 
 ## Features
 
@@ -10,10 +10,11 @@ Built with Next.js (frontend + backend in one app) and [Pandoc](https://pandoc.o
 - **Full LaTeX math support** — inline and display formulas with all common delimiters:
   - `$...$` and `$$...$$`
   - `\(...\)` and `\[...\]`
-- **Native Word equations** — formulas are converted to OMML (`<m:oMath>`), so they can be edited directly in Microsoft Word
-- **GFM tables** — GitHub Flavored Markdown tables convert to native Word tables
+- **Export to DOCX** — formulas are converted to OMML (`<m:oMath>`), so they can be edited directly in Microsoft Word
+- **Export to PDF** — math is typeset natively by Typst, producing clean, print-ready PDFs
+- **GFM tables** — GitHub Flavored Markdown tables convert to native Word tables (DOCX) or rendered tables (PDF)
 - **File upload** — load an existing `.md` file or paste/type directly in the editor
-- **Custom Word styling** — headings are exported in Arial, black color, without bookmark anchors
+- **Custom Word styling** — DOCX headings are exported in Arial, black color, without bookmark anchors
 - **Clean output** — no Word bookmarks on headings, ready to submit or share
 
 ## How it works
@@ -21,22 +22,24 @@ Built with Next.js (frontend + backend in one app) and [Pandoc](https://pandoc.o
 ```
 .md file
    │
-   ├─ Markdown content ──────────► Word XML (headings, lists, tables...)
+   ├─ Markdown content ──────────► Word XML / PDF (headings, lists, tables...)
    │
-   └─ LaTeX formulas ────────────► OMML (native Word equations)
+   └─ LaTeX formulas ────────────► OMML (DOCX) / typeset math (PDF)
 
-              Powered by Pandoc + a custom reference.docx template
+              Powered by Pandoc + Typst (PDF) / custom reference.docx (DOCX)
 ```
 
-The frontend sends the Markdown to the `/api/convert` endpoint, which runs Pandoc with:
+The frontend sends the Markdown and desired format to the `/api/convert` endpoint, which runs Pandoc with:
 
 - Input format: `markdown+tex_math_single_backslash-auto_identifiers`
-- A custom style template (`pandoc/reference.docx`) that sets heading font to Arial and heading color to black
+- For DOCX: a custom style template (`pandoc/reference.docx`) that sets heading font to Arial and heading color to black
+- For PDF: `--pdf-engine=typst` for native math typesetting
 
 ## Requirements
 
 - **Node.js** 18+ (developed on v22)
 - **Pandoc** 3.x available on the system `PATH`
+- **Typst** 0.x available on the system `PATH` (only needed for PDF export)
 
 ### Installing Pandoc
 
@@ -54,6 +57,14 @@ tar xzf pandoc.tar.gz
 cp pandoc-3.10.1/bin/pandoc ~/.local/bin/
 ```
 
+### Installing Typst
+
+```bash
+curl -sL -o typst.tar.xz https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz
+tar xf typst.tar.xz
+cp typst-x86_64-unknown-linux-musl/typst ~/.local/bin/
+```
+
 ## Getting started
 
 ```bash
@@ -61,7 +72,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), write or upload your Markdown, and click **Descargar .docx**.
+Open [http://localhost:3000](http://localhost:3000), write or upload your Markdown, choose **DOCX** or **PDF** from the dropdown, and click the download button.
 
 ## Project structure
 
@@ -87,11 +98,14 @@ Accepts either JSON or multipart form data.
 ```json
 {
   "markdown": "# Title\n\nFormula: $E = mc^2$",
-  "filename": "my-document"
+  "filename": "my-document",
+  "format": "docx"
 }
 ```
 
-**Multipart:** form field `file` with a `.md` file.
+The `format` field accepts `"docx"` (default) or `"pdf"`.
+
+**Multipart:** form field `file` with a `.md` file, plus an optional `format` field.
 
 **Response:** the `.docx` file as an attachment (`200 OK`), or a JSON error (`400`, `413`, `500`).
 
@@ -117,7 +131,8 @@ unzip -p test.docx word/document.xml | grep -o oMath
 ## Tech stack
 
 - [Next.js](https://nextjs.org) (App Router, TypeScript)
-- [Pandoc](https://pandoc.org) — Markdown → DOCX conversion
+- [Pandoc](https://pandoc.org) — Markdown → DOCX/PDF conversion
+- [Typst](https://typst.app) — PDF engine with native math typesetting
 - [react-markdown](https://github.com/remarkjs/react-markdown) + [remark-math](https://github.com/remarkjs/remark-math) + [rehype-katex](https://github.com/remarkjs/remark-math) — live preview
 - [KaTeX](https://katex.org) — fast math rendering
 - [Tailwind CSS](https://tailwindcss.com) — styling

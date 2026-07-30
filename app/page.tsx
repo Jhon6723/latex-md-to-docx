@@ -36,6 +36,7 @@ $$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 export default function Home() {
   const [markdown, setMarkdown] = useState(SAMPLE_MARKDOWN);
   const [filename, setFilename] = useState("documento");
+  const [format, setFormat] = useState<"docx" | "pdf">("docx");
   const [converting, setConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +59,7 @@ export default function Home() {
       const res = await fetch("/api/convert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markdown, filename }),
+        body: JSON.stringify({ markdown, filename, format }),
       });
 
       if (!res.ok) {
@@ -70,7 +71,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${filename || "documento"}.docx`;
+      a.download = `${filename || "documento"}.${format}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -84,9 +85,9 @@ export default function Home() {
     <main className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 px-6 py-4">
         <div>
-          <h1 className="text-xl font-semibold">LaTeX MD → DOCX</h1>
+          <h1 className="text-xl font-semibold">LaTeX MD → DOCX / PDF</h1>
           <p className="text-sm text-zinc-400">
-            Markdown con formulas LaTeX convertido a ecuaciones nativas de Word
+            Markdown con formulas LaTeX convertido a ecuaciones nativas de Word o PDF
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -110,12 +111,20 @@ export default function Home() {
             placeholder="nombre-archivo"
             className="w-44 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-zinc-500"
           />
+          <select
+            value={format}
+            onChange={(e) => setFormat(e.target.value as "docx" | "pdf")}
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+          >
+            <option value="docx">DOCX</option>
+            <option value="pdf">PDF</option>
+          </select>
           <button
             onClick={handleConvert}
             disabled={converting || markdown.trim() === ""}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {converting ? "Convirtiendo..." : "Descargar .docx"}
+            {converting ? "Convirtiendo..." : `Descargar .${format}`}
           </button>
         </div>
       </header>
