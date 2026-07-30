@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 
 const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024; // 2 MB
 const PANDOC_FROM_FORMAT = "markdown+tex_math_single_backslash";
+const REFERENCE_DOC = path.join(process.cwd(), "pandoc", "reference.docx");
 
 function sanitizeFilename(name: string): string {
   const base = name.replace(/\.(md|markdown)$/i, "");
@@ -61,10 +62,14 @@ export async function POST(req: NextRequest) {
     await writeFile(inputPath, markdown, "utf-8");
 
     try {
-      await execFileAsync("pandoc", [inputPath, "--from", PANDOC_FROM_FORMAT, "-o", outputPath], {
-        timeout: 30_000,
-        maxBuffer: 8 * 1024 * 1024,
-      });
+      await execFileAsync(
+        "pandoc",
+        [inputPath, "--from", PANDOC_FROM_FORMAT, "--reference-doc", REFERENCE_DOC, "-o", outputPath],
+        {
+          timeout: 30_000,
+          maxBuffer: 8 * 1024 * 1024,
+        }
+      );
     } catch (err) {
       const stderr = err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
       throw new ConvertError(500, `Pandoc falló: ${stderr || "error desconocido"}`);
