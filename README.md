@@ -33,7 +33,7 @@ The frontend sends the Markdown and desired format to the `/api/convert` endpoin
 
 - Input format: `markdown+tex_math_single_backslash-auto_identifiers`
 - For DOCX: a custom style template (`pandoc/reference.docx`) that sets heading font to Arial and heading color to black
-- For PDF: `--pdf-engine=typst` for native math typesetting
+- For PDF: `--pdf-engine` pointing to the local Typst binary for native math typesetting
 
 ## Requirements
 
@@ -65,7 +65,11 @@ Open [http://localhost:3000](http://localhost:3000), write or upload your Markdo
 │   ├── page.tsx              # Editor + live preview UI
 │   ├── layout.tsx            # App shell and metadata
 │   ├── globals.css           # Tailwind + typography plugin
-│   └── api/convert/route.ts  # POST endpoint: markdown -> pandoc -> docx
+│   └── api/convert/route.ts  # POST endpoint: markdown -> pandoc -> docx/pdf
+├── lib/
+│   └── normalize-backslash-math.ts  # Converts \(...\) and \[...\] to $...$ for the preview
+├── scripts/
+│   └── install-binaries.mjs  # postinstall: downloads Pandoc and Typst into bin/
 ├── pandoc/
 │   └── reference.docx        # Custom Word style template (Arial black headings)
 └── AGENTS.md                 # Notes for AI agents working on this repo
@@ -91,16 +95,18 @@ The `format` field accepts `"docx"` (default) or `"pdf"`.
 
 **Multipart:** form field `file` with a `.md` file, plus an optional `format` field.
 
-**Response:** the `.docx` file as an attachment (`200 OK`), or a JSON error (`400`, `413`, `500`).
+**Response:** the converted file as an attachment (`200 OK`), or a JSON error (`400`, `413`, `500`).
 
-Example with curl:
+Example with curl (DOCX):
 
 ```bash
 curl -X POST http://localhost:3000/api/convert \
   -H "Content-Type: application/json" \
-  -d '{"markdown":"# Test\n\n$E=mc^2$","filename":"test"}' \
+  -d '{"markdown":"# Test\n\n$E=mc^2$","filename":"test","format":"docx"}' \
   -o test.docx
 ```
+
+For PDF, just change `"format": "pdf"` and the output filename.
 
 ## Verification
 
