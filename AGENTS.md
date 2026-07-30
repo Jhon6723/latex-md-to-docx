@@ -10,10 +10,9 @@ Conversor web de Markdown con fórmulas LaTeX a DOCX (ecuaciones OMML nativas de
 
 ## Dependencias externas
 
-- **Pandoc** (`~/.local/bin/pandoc`, v3.10.1): motor de conversión. Invocado desde `app/api/convert/route.ts` con `--from markdown+tex_math_single_backslash-auto_identifiers` para soportar `$...$`, `$$...$$`, `\(...\)` y `\[...\]` sin bookmarks en encabezados.
-- **Typst** (`~/.local/bin/typst`, v0.15.1): motor PDF. Pandoc lo invoca con `--pdf-engine=typst` cuando el formato solicitado es `pdf`.
-
-Si Pandoc o Typst no están en el PATH, la API devuelve 500.
+- **Pandoc** y **Typst** se descargan automáticamente al directorio `bin/` del proyecto mediante el script `postinstall` (`scripts/install-binaries.mjs`). No se necesitan permisos de administrador ni instalación manual.
+- Si los binarios no están en `bin/`, la API busca en el `PATH` del sistema como fallback.
+- Para omitir la descarga automática: `SKIP_BIN_DOWNLOAD=1 npm install`.
 
 ## Plantilla de estilos DOCX
 

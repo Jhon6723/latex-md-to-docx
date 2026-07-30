@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/install-binaries.mjs"
   },
   "dependencies": {
     "@types/katex": "^0.16.8",

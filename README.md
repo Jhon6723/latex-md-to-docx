@@ -38,32 +38,16 @@ The frontend sends the Markdown and desired format to the `/api/convert` endpoin
 ## Requirements
 
 - **Node.js** 18+ (developed on v22)
-- **Pandoc** 3.x available on the system `PATH`
-- **Typst** 0.x available on the system `PATH` (only needed for PDF export)
 
-### Installing Pandoc
+**Pandoc** and **Typst** are downloaded automatically by a `postinstall` script into `bin/` — no manual installation or admin privileges needed. Just run `npm install` and everything is ready.
 
-Ubuntu/Debian:
+To skip the automatic download (e.g. in CI or if you have them installed system-wide):
 
 ```bash
-sudo apt install pandoc
+SKIP_BIN_DOWNLOAD=1 npm install
 ```
 
-Or use the standalone binary (no root needed):
-
-```bash
-curl -sL -o pandoc.tar.gz https://github.com/jgm/pandoc/releases/download/3.10.1/pandoc-3.10.1-linux-amd64.tar.gz
-tar xzf pandoc.tar.gz
-cp pandoc-3.10.1/bin/pandoc ~/.local/bin/
-```
-
-### Installing Typst
-
-```bash
-curl -sL -o typst.tar.xz https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz
-tar xf typst.tar.xz
-cp typst-x86_64-unknown-linux-musl/typst ~/.local/bin/
-```
+The API falls back to system `PATH` if the local binaries are not found.
 
 ## Getting started
 

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +12,12 @@ const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024; // 2 MB
 // -auto_identifiers evita que pandoc inserte bookmarks (anclas) en los encabezados
 const PANDOC_FROM_FORMAT = "markdown+tex_math_single_backslash-auto_identifiers";
 const REFERENCE_DOC = path.join(process.cwd(), "pandoc", "reference.docx");
+
+// Prefer binaries downloaded by the postinstall script (bin/), fall back to system PATH
+const LOCAL_PANDOC = path.join(process.cwd(), "bin", "pandoc");
+const LOCAL_TYPST = path.join(process.cwd(), "bin", "typst");
+const PANDOC_BIN = existsSync(LOCAL_PANDOC) ? LOCAL_PANDOC : "pandoc";
+const TYPST_BIN = existsSync(LOCAL_TYPST) ? LOCAL_TYPST : "typst";
 
 type OutputFormat = "docx" | "pdf";
 
@@ -26,7 +33,7 @@ const FORMAT_CONFIG: Record<
   pdf: {
     extension: "pdf",
     contentType: "application/pdf",
-    extraArgs: ["--pdf-engine=typst"],
+    extraArgs: [`--pdf-engine=${TYPST_BIN}`],
   },
 };
 
@@ -96,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await execFileAsync(
-        "pandoc",
+        PANDOC_BIN,
         [inputPath, "--from", PANDOC_FROM_FORMAT, ...config.extraArgs, "-o", outputPath],
         {
           timeout: 30_000,
