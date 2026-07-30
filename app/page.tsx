@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { normalizeBackslashMath } from "@/lib/normalize-backslash-math";
 import "katex/dist/katex.min.css";
 
 const SAMPLE_MARKDOWN = `# Documento de prueba
@@ -38,6 +39,7 @@ export default function Home() {
   const [converting, setConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewMarkdown = useMemo(() => normalizeBackslashMath(markdown), [markdown]);
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -144,7 +146,7 @@ export default function Home() {
           </div>
           <article className="prose prose-invert max-w-none flex-1 overflow-y-auto p-6 text-zinc-100 [&_.katex]:text-zinc-100">
             <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
-              {markdown}
+              {previewMarkdown}
             </ReactMarkdown>
           </article>
         </section>
