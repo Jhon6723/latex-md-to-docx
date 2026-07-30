@@ -1,65 +1,145 @@
-import Image from "next/image";
+"use client";
+
+import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
+
+const SAMPLE_MARKDOWN = `# Documento de prueba
+
+Escribe **Markdown** con formulas *LaTeX* a la izquierda y mira el resultado aqui.
+
+## Formulas inline
+
+La energia es $E = mc^2$ y el teorema de Pitagoras dice que $a^2 + b^2 = c^2$.
+
+## Formulas en bloque
+
+$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
+
+## Tambien funciona con delimitadores de backslash
+
+\\[\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\\]
+`;
 
 export default function Home() {
+  const [markdown, setMarkdown] = useState(SAMPLE_MARKDOWN);
+  const [filename, setFilename] = useState("documento");
+  const [converting, setConverting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setMarkdown(text);
+    setFilename(file.name.replace(/\.(md|markdown)$/i, "") || "documento");
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleConvert() {
+    setConverting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/convert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown, filename }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? `Error del servidor (${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filename || "documento"}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido al convertir");
+    } finally {
+      setConverting(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h1 className="text-xl font-semibold">LaTeX MD → DOCX</h1>
+          <p className="text-sm text-zinc-400">
+            Markdown con formulas LaTeX convertido a ecuaciones nativas de Word
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".md,.markdown,text/markdown"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium hover:bg-zinc-800"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Cargar .md
+          </button>
+          <input
+            type="text"
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+            placeholder="nombre-archivo"
+            className="w-44 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+          />
+          <button
+            onClick={handleConvert}
+            disabled={converting || markdown.trim() === ""}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Documentation
-          </a>
+            {converting ? "Convirtiendo..." : "Descargar .docx"}
+          </button>
         </div>
-      </main>
-    </div>
+      </header>
+
+      {error && (
+        <div className="border-b border-red-900 bg-red-950/60 px-6 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      <div className="grid flex-1 grid-cols-1 md:grid-cols-2">
+        <section className="flex flex-col border-b border-zinc-800 md:border-b-0 md:border-r">
+          <div className="border-b border-zinc-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Editor Markdown
+          </div>
+          <textarea
+            value={markdown}
+            onChange={(e) => setMarkdown(e.target.value)}
+            spellCheck={false}
+            className="min-h-[60vh] flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-relaxed outline-none"
+            placeholder="# Escribe aqui tu markdown con $formulas$ LaTeX..."
+          />
+        </section>
+
+        <section className="flex flex-col bg-zinc-900/40">
+          <div className="border-b border-zinc-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Vista previa
+          </div>
+          <article className="prose prose-invert max-w-none flex-1 overflow-y-auto p-6 text-zinc-100 [&_.katex]:text-zinc-100">
+            <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+              {markdown}
+            </ReactMarkdown>
+          </article>
+        </section>
+      </div>
+    </main>
   );
 }
