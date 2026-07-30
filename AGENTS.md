@@ -12,7 +12,7 @@ Conversor web de Markdown con fórmulas LaTeX a DOCX con ecuaciones OMML nativas
 
 La conversión la ejecuta el binario de **Pandoc** (instalado en `~/.local/bin/pandoc`, v3.10.1), invocado desde `app/api/convert/route.ts` con `--from markdown+tex_math_single_backslash` para soportar `$...$`, `$$...$$`, `\(...\)` y `\[...\]`. Si Pandoc no está en el PATH, la API devuelve 500.
 
-Se usa `--reference-doc pandoc/reference.docx`: plantilla de estilos propia (generada con `pandoc --print-default-data-file reference.docx`) con la fuente mayor del tema cambiada a **Arial** (`word/theme/theme1.xml`), por lo que los encabezados salen en Arial. Para cambiar más estilos, editar esa plantilla (es un zip; modificar XML y re-empaquetar).
+Se usa `--reference-doc pandoc/reference.docx`: plantilla de estilos propia (generada con `pandoc --print-default-data-file reference.docx`) con la fuente mayor del tema cambiada a **Arial Black** (`word/theme/theme1.xml`), por lo que los encabezados salen en Arial Black. Para cambiar más estilos, editar esa plantilla (es un zip; modificar XML y re-empaquetar).
 
 ## Comandos de verificación
 
