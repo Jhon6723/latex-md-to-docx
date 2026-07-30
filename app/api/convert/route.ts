@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from "next/server";
 const execFileAsync = promisify(execFile);
 
 const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024; // 2 MB
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB per image
+const MAX_TOTAL_IMAGE_BYTES = 50 * 1024 * 1024; // 50 MB total
+const MAX_IMAGES = 20;
 // -auto_identifiers evita que pandoc inserte bookmarks (anclas) en los encabezados
 const PANDOC_FROM_FORMAT = "markdown+tex_math_single_backslash-auto_identifiers";
 const REFERENCE_DOC = path.join(process.cwd(), "pandoc", "reference.docx");
@@ -18,6 +21,8 @@ const LOCAL_PANDOC = path.join(process.cwd(), "bin", "pandoc");
 const LOCAL_TYPST = path.join(process.cwd(), "bin", "typst");
 const PANDOC_BIN = existsSync(LOCAL_PANDOC) ? LOCAL_PANDOC : "pandoc";
 const TYPST_BIN = existsSync(LOCAL_TYPST) ? LOCAL_TYPST : "typst";
+
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"]);
 
 type OutputFormat = "docx" | "pdf";
 
@@ -33,7 +38,9 @@ const FORMAT_CONFIG: Record<
   pdf: {
     extension: "pdf",
     contentType: "application/pdf",
-    extraArgs: [`--pdf-engine=${TYPST_BIN}`],
+    // --root=/ makes Typst treat absolute paths as truly absolute (needed for
+    // Pandoc's temp media directory when embedding uploaded images)
+    extraArgs: [`--pdf-engine=${TYPST_BIN}`, "--pdf-engine-opt=--root", "--pdf-engine-opt=/"],
   },
 };
 
@@ -54,9 +61,19 @@ function parseFormat(value: unknown): OutputFormat {
   return "docx"; // default
 }
 
-async function extractMarkdown(
-  req: NextRequest
-): Promise<{ markdown: string; filename: string; format: OutputFormat }> {
+function isImageFile(name: string): boolean {
+  const ext = path.extname(name).toLowerCase();
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+type ExtractedRequest = {
+  markdown: string;
+  filename: string;
+  format: OutputFormat;
+  images: { name: string; data: Buffer }[];
+};
+
+async function extractRequest(req: NextRequest): Promise<ExtractedRequest> {
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("multipart/form-data")) {
@@ -70,9 +87,32 @@ async function extractMarkdown(
       throw new ConvertError(413, "El archivo supera el límite de 2 MB");
     }
     const format = parseFormat(form.get("format"));
-    return { markdown: buffer.toString("utf-8"), filename: sanitizeFilename(file.name), format };
+
+    // Collect image files from "images" field (can be multiple)
+    const images: { name: string; data: Buffer }[] = [];
+    let totalImageBytes = 0;
+    const entries = form.getAll("images");
+    for (const entry of entries) {
+      if (!(entry instanceof File)) continue;
+      if (!isImageFile(entry.name)) continue;
+      if (images.length >= MAX_IMAGES) {
+        throw new ConvertError(413, `Máximo ${MAX_IMAGES} imágenes por conversión`);
+      }
+      const imgBuffer = Buffer.from(await entry.arrayBuffer());
+      if (imgBuffer.byteLength > MAX_IMAGE_BYTES) {
+        throw new ConvertError(413, `La imagen "${entry.name}" supera el límite de 10 MB`);
+      }
+      totalImageBytes += imgBuffer.byteLength;
+      if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+        throw new ConvertError(413, "El total de imágenes supera el límite de 50 MB");
+      }
+      images.push({ name: entry.name, data: imgBuffer });
+    }
+
+    return { markdown: buffer.toString("utf-8"), filename: sanitizeFilename(file.name), format, images };
   }
 
+  // JSON body (no images in this path)
   const body = (await req.json().catch(() => null)) as {
     markdown?: unknown;
     filename?: unknown;
@@ -86,14 +126,14 @@ async function extractMarkdown(
   }
   const filename = typeof body.filename === "string" ? sanitizeFilename(body.filename) : "documento";
   const format = parseFormat(body.format);
-  return { markdown: body.markdown, filename, format };
+  return { markdown: body.markdown, filename, format, images: [] };
 }
 
 export async function POST(req: NextRequest) {
   let workDir: string | null = null;
 
   try {
-    const { markdown, filename, format } = await extractMarkdown(req);
+    const { markdown, filename, format, images } = await extractRequest(req);
     const config = FORMAT_CONFIG[format];
 
     workDir = await mkdtemp(path.join(tmpdir(), "md2docx-"));
@@ -101,17 +141,41 @@ export async function POST(req: NextRequest) {
     const outputPath = path.join(workDir, `output.${config.extension}`);
     await writeFile(inputPath, markdown, "utf-8");
 
+    // Save uploaded images into the workDir so Pandoc and Typst can find them
+    // Images go in the same directory as input.md so relative paths work for both
+    if (images.length > 0) {
+      for (const img of images) {
+        // Sanitize image filename to prevent path traversal
+        const safeName = path.basename(img.name).replace(/[^a-zA-Z0-9._-]+/g, "-");
+        await writeFile(path.join(workDir, safeName), img.data);
+      }
+    }
+
+    // --resource-path tells Pandoc where to look for images referenced in the markdown.
+    // Using the workDir itself (where input.md lives) ensures Typst also resolves
+    // relative paths correctly when generating PDF.
+    const resourcePathArgs = images.length > 0 ? ["--resource-path", workDir] : [];
+
     try {
       await execFileAsync(
         PANDOC_BIN,
-        [inputPath, "--from", PANDOC_FROM_FORMAT, ...config.extraArgs, "-o", outputPath],
+        [
+          inputPath,
+          "--from",
+          PANDOC_FROM_FORMAT,
+          ...config.extraArgs,
+          ...resourcePathArgs,
+          "-o",
+          outputPath,
+        ],
         {
           timeout: 30_000,
           maxBuffer: 8 * 1024 * 1024,
         }
       );
     } catch (err) {
-      const stderr = err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
+      const stderr =
+        err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
       throw new ConvertError(500, `Pandoc falló: ${stderr || "error desconocido"}`);
     }
 
