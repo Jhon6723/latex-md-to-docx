@@ -8,7 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 const execFileAsync = promisify(execFile);
 
 const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024; // 2 MB
-const PANDOC_FROM_FORMAT = "markdown+tex_math_single_backslash";
+// -auto_identifiers evita que pandoc inserte bookmarks (anclas) en los encabezados
+const PANDOC_FROM_FORMAT = "markdown+tex_math_single_backslash-auto_identifiers";
 const REFERENCE_DOC = path.join(process.cwd(), "pandoc", "reference.docx");
 
 function sanitizeFilename(name: string): string {
