@@ -25,3 +25,54 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes drop-target-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.45), inset 0 0 24px rgba(16, 185, 129, 0.08);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px rgba(110, 231, 183, 0.95), inset 0 0 42px rgba(16, 185, 129, 0.2);
+  }
+}
+
+@keyframes drop-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes drop-icon-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.drop-target-pulse {
+  animation: drop-target-pulse 1.4s ease-in-out infinite;
+}
+
+.drop-card-enter {
+  animation: drop-card-enter 180ms ease-out both;
+}
+
+.drop-icon-bounce {
+  animation: drop-icon-bounce 900ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drop-target-pulse,
+  .drop-card-enter,
+  .drop-icon-bounce {
+    animation: none;
+  }
+}

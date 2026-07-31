@@ -41,6 +41,10 @@ Para incluir una imagen en tu documento:
 3. La imagen aparecera en la vista previa y quedara embebida en el documento exportado
 
 Ejemplo: \`![Grafico de la funcion](grafico.png)\`
+
+Tambien puedes copiar una imagen, colocar el cursor aqui y pegarla directamente.
+La aplicacion la cargara y agregara automaticamente una referencia como \`![](imagen-pegada-1.png)\`.
+Tambien puedes arrastrar una o varias imagenes desde tu computadora hasta el editor.
 `;
 
 const IMAGE_EXTENSIONS = ".png,.jpg,.jpeg,.gif,.svg,.webp,.bmp";
@@ -56,6 +60,11 @@ function urlTransform(url: string): string {
   return defaultUrlTransform(url);
 }
 
+function getImageExtension(type: string): string {
+  const subtype = type.split("/")[1]?.split("+")[0];
+  return subtype === "jpeg" ? "jpg" : subtype || "png";
+}
+
 export default function Home() {
   const [markdown, setMarkdown] = useState(SAMPLE_MARKDOWN);
   const [filename, setFilename] = useState("documento");
@@ -63,14 +72,18 @@ export default function Home() {
   const [converting, setConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<UploadedImage[]>([]);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const markdownInputRef = useRef<HTMLTextAreaElement>(null);
   const previewMarkdown = useMemo(() => normalizeBackslashMath(markdown), [markdown]);
 
   // Revoke object URLs only on unmount (not when images change, to avoid
   // destroying URLs that are still in use by the preview)
   const imagesRef = useRef(images);
-  imagesRef.current = images;
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
   useEffect(() => {
     return () => {
       imagesRef.current.forEach((img) => URL.revokeObjectURL(img.url));
@@ -95,6 +108,82 @@ export default function Home() {
     }));
     setImages((prev) => [...prev, ...newImages]);
     if (imageInputRef.current) imageInputRef.current.value = "";
+  }
+
+  function insertImagesAtCursor(sourceFiles: File[], start: number, end: number) {
+    if (sourceFiles.length === 0) return;
+
+    const usedNames = new Set(images.map((image) => image.file.name));
+    let counter = images.length + 1;
+    const uploadedImages = sourceFiles.map((sourceFile) => {
+      const extension = getImageExtension(sourceFile.type);
+      let imageName = `imagen-pegada-${counter}.${extension}`;
+      while (usedNames.has(imageName)) {
+        counter += 1;
+        imageName = `imagen-pegada-${counter}.${extension}`;
+      }
+      usedNames.add(imageName);
+      counter += 1;
+
+      const file = new File([sourceFile], imageName, {
+        type: sourceFile.type || "image/png",
+      });
+      return { file, url: URL.createObjectURL(file) };
+    });
+
+    setImages((prev) => [...prev, ...uploadedImages]);
+
+    const references = uploadedImages.map(({ file }) => `![](${file.name})`).join("\n");
+    const linePrefix = start > 0 && markdown[start - 1] !== "\n" ? "\n" : "";
+    const lineSuffix = end < markdown.length && markdown[end] !== "\n" ? "\n" : "";
+    const insertion = `${linePrefix}${references}${lineSuffix}`;
+    const nextMarkdown = markdown.slice(0, start) + insertion + markdown.slice(end);
+
+    setMarkdown(nextMarkdown);
+    setError(null);
+    requestAnimationFrame(() => {
+      const input = markdownInputRef.current;
+      if (!input) return;
+      const cursorPosition = start + linePrefix.length + references.length;
+      input.focus();
+      input.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  }
+
+  function handleMarkdownPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const imageItem = Array.from(event.clipboardData.items).find(
+      (item) => item.kind === "file" && item.type.startsWith("image/")
+    );
+    const sourceFile = imageItem?.getAsFile();
+    if (!sourceFile) return;
+
+    event.preventDefault();
+    const textarea = event.currentTarget;
+    insertImagesAtCursor([sourceFile], textarea.selectionStart, textarea.selectionEnd);
+  }
+
+  function handleMarkdownDragOver(event: React.DragEvent<HTMLTextAreaElement>) {
+    if (Array.from(event.dataTransfer.items).some((item) => item.type.startsWith("image/"))) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setIsDraggingImage(true);
+    }
+  }
+
+  function handleMarkdownDragLeave() {
+    setIsDraggingImage(false);
+  }
+
+  function handleMarkdownDrop(event: React.DragEvent<HTMLTextAreaElement>) {
+    const imageFiles = Array.from(event.dataTransfer.files).filter((file) =>
+      file.type.startsWith("image/")
+    );
+    if (imageFiles.length === 0) return;
+
+    event.preventDefault();
+    setIsDraggingImage(false);
+    const textarea = event.currentTarget;
+    insertImagesAtCursor(imageFiles, textarea.selectionStart, textarea.selectionEnd);
   }
 
   function removeImage(index: number) {
@@ -257,17 +346,52 @@ export default function Home() {
       )}
 
       <div className="grid flex-1 grid-cols-1 md:grid-cols-2">
-        <section className="flex flex-col border-b border-zinc-800 md:border-b-0 md:border-r">
+        <section
+          className={`relative flex flex-col border-b border-zinc-800 md:border-b-0 md:border-r ${
+            isDraggingImage ? "drop-target-pulse" : ""
+          }`}
+        >
           <div className="border-b border-zinc-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Editor Markdown
+            <span className="ml-2 normal-case tracking-normal text-zinc-600">
+              Pega con Ctrl/Cmd+V o arrastra imagenes aqui
+            </span>
           </div>
           <textarea
+            ref={markdownInputRef}
             value={markdown}
             onChange={(e) => setMarkdown(e.target.value)}
+            onPaste={handleMarkdownPaste}
+            onDragOver={handleMarkdownDragOver}
+            onDragLeave={handleMarkdownDragLeave}
+            onDrop={handleMarkdownDrop}
             spellCheck={false}
-            className="min-h-[60vh] flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-relaxed outline-none"
+            className={`min-h-[60vh] flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-relaxed outline-none transition-colors duration-300 ${
+              isDraggingImage ? "bg-emerald-950/20" : ""
+            }`}
             placeholder="# Escribe aqui tu markdown con $formulas$ LaTeX..."
           />
+          {isDraggingImage && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-emerald-950/35 backdrop-blur-[1px]">
+              <div className="drop-card-enter rounded-xl border border-emerald-400/70 bg-zinc-950/90 px-8 py-6 text-center shadow-[0_0_35px_rgba(52,211,153,0.25)]">
+                <div className="drop-icon-bounce mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+                  <svg
+                    aria-hidden="true"
+                    className="h-7 w-7"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0L8 8m4-4 4 4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-emerald-200">Suelta la imagen aqui</p>
+                <p className="mt-1 text-xs text-zinc-400">Se insertara en la posicion del cursor</p>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="flex flex-col bg-zinc-900/40">

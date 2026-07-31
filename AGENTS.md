@@ -35,7 +35,12 @@ La API acepta un parámetro `format` (`"docx"` por defecto, o `"pdf"`) en el bod
   unzip -p test.docx word/document.xml | grep -o oMath   # debe encontrar ecuaciones OMML
   ```
 
-## Commits
+## Git commit convention
 
-Commit messages in English from now on. No AI tool attribution (no Co-Authored-By, no "Generated with").
+- Write every commit message in English.
+- Use the Conventional Commits format: type(scope): imperative summary.
+- Use one of these types when applicable: feat, fix, docs, refactor, test, chore, build, ci, perf, or style.
+- Keep the subject concise, use the imperative mood, and target 72 characters or fewer when practical.
+- Add an optional body when context is needed, focusing on why the change was made and any relevant implementation details.
+- Do not include AI tool attribution, Co-Authored-By, or Generated with lines.
 
