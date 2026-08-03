@@ -17,8 +17,10 @@ const PANDOC_FROM_FORMAT = "markdown+tex_math_single_backslash-auto_identifiers"
 const REFERENCE_DOC = path.join(process.cwd(), "pandoc", "reference.docx");
 
 // Prefer binaries downloaded by the postinstall script (bin/), fall back to system PATH
-const LOCAL_PANDOC = path.join(process.cwd(), "bin", "pandoc");
-const LOCAL_TYPST = path.join(process.cwd(), "bin", "typst");
+// On Windows, binaries have a .exe extension that must be included for existsSync to find them
+const EXE = process.platform === "win32" ? ".exe" : "";
+const LOCAL_PANDOC = path.join(process.cwd(), "bin", `pandoc${EXE}`);
+const LOCAL_TYPST = path.join(process.cwd(), "bin", `typst${EXE}`);
 const PANDOC_BIN = existsSync(LOCAL_PANDOC) ? LOCAL_PANDOC : "pandoc";
 const TYPST_BIN = existsSync(LOCAL_TYPST) ? LOCAL_TYPST : "typst";
 
@@ -38,9 +40,8 @@ const FORMAT_CONFIG: Record<
   pdf: {
     extension: "pdf",
     contentType: "application/pdf",
-    // --root=/ makes Typst treat absolute paths as truly absolute (needed for
-    // Pandoc's temp media directory when embedding uploaded images)
-    extraArgs: [`--pdf-engine=${TYPST_BIN}`, "--pdf-engine-opt=--root", "--pdf-engine-opt=/"],
+    // PDF is handled in two steps (see convertToPdf) so no --pdf-engine here
+    extraArgs: [],
   },
 };
 
@@ -54,6 +55,70 @@ function sanitizeFilename(name: string): string {
   const base = name.replace(/\.(md|markdown|docx|pdf)$/i, "");
   const safe = base.replace(/[^a-zA-Z0-9áéíóúñüÁÉÍÓÚÑÜ._-]+/g, "-").replace(/^-+|-+$/g, "");
   return safe || "documento";
+}
+
+// Pandoc writes absolute paths (with drive letters on Windows, e.g. "C:/Users/...")
+// into the intermediate .typ file. Typst cannot parse Windows drive letters in
+// image() calls, so we convert absolute paths to relative ones from the workDir.
+function fixTypstPaths(typContent: string, workDir: string): string {
+  const cwd = path.resolve(workDir).replace(/\\/g, "/");
+  return typContent.replace(/image\("([^"]+)"\)/g, (match, imgPath: string) => {
+    const normalized = imgPath.replace(/\\/g, "/");
+    if (path.isAbsolute(normalized)) {
+      const relative = path.relative(cwd, normalized).replace(/\\/g, "/");
+      return `image("${relative}")`;
+    }
+    return match;
+  });
+}
+
+async function convertToPdf(workDir: string, inputPath: string, resourcePathArgs: string[]): Promise<void> {
+  // Step 1: Generate .typ file with Pandoc (no --pdf-engine)
+  const typPath = "intermediate.typ";
+  try {
+    await execFileAsync(
+      PANDOC_BIN,
+      [
+        inputPath,
+        "--from",
+        PANDOC_FROM_FORMAT,
+        ...resourcePathArgs,
+        "-o",
+        typPath,
+      ],
+      {
+        cwd: workDir,
+        timeout: 30_000,
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    );
+  } catch (err) {
+    const stderr =
+      err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
+    throw new ConvertError(500, `Pandoc falló: ${stderr || "error desconocido"}`);
+  }
+
+  // Step 2: Fix absolute paths in the .typ file (Windows drive-letter issue)
+  const typContent = await readFile(path.join(workDir, typPath), "utf-8");
+  const fixedContent = fixTypstPaths(typContent, workDir);
+  await writeFile(path.join(workDir, typPath), fixedContent, "utf-8");
+
+  // Step 3: Compile .typ to PDF with Typst
+  try {
+    await execFileAsync(
+      TYPST_BIN,
+      ["compile", "--root", ".", typPath, "output.pdf"],
+      {
+        cwd: workDir,
+        timeout: 30_000,
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    );
+  } catch (err) {
+    const stderr =
+      err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
+    throw new ConvertError(500, `Typst falló: ${stderr || "error desconocido"}`);
+  }
 }
 
 function parseFormat(value: unknown): OutputFormat {
@@ -137,9 +202,9 @@ export async function POST(req: NextRequest) {
     const config = FORMAT_CONFIG[format];
 
     workDir = await mkdtemp(path.join(tmpdir(), "md2docx-"));
-    const inputPath = path.join(workDir, "input.md");
-    const outputPath = path.join(workDir, `output.${config.extension}`);
-    await writeFile(inputPath, markdown, "utf-8");
+    const inputPath = "input.md";
+    const outputPath = `output.${config.extension}`;
+    await writeFile(path.join(workDir, inputPath), markdown, "utf-8");
 
     // Save uploaded images into the workDir so Pandoc and Typst can find them
     // Images go in the same directory as input.md so relative paths work for both
@@ -152,34 +217,41 @@ export async function POST(req: NextRequest) {
     }
 
     // --resource-path tells Pandoc where to look for images referenced in the markdown.
-    // Using the workDir itself (where input.md lives) ensures Typst also resolves
-    // relative paths correctly when generating PDF.
-    const resourcePathArgs = images.length > 0 ? ["--resource-path", workDir] : [];
+    // Using "." (relative to cwd=workDir) ensures Pandoc generates relative paths in
+    // the intermediate .typ file, which Typst can resolve without drive-letter issues.
+    const resourcePathArgs = images.length > 0 ? ["--resource-path", "."] : [];
 
-    try {
-      await execFileAsync(
-        PANDOC_BIN,
-        [
-          inputPath,
-          "--from",
-          PANDOC_FROM_FORMAT,
-          ...config.extraArgs,
-          ...resourcePathArgs,
-          "-o",
-          outputPath,
-        ],
-        {
-          timeout: 30_000,
-          maxBuffer: 8 * 1024 * 1024,
-        }
-      );
-    } catch (err) {
-      const stderr =
-        err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
-      throw new ConvertError(500, `Pandoc falló: ${stderr || "error desconocido"}`);
+    if (format === "pdf") {
+      // PDF uses a two-step process: Pandoc -> .typ -> fix paths -> Typst -> .pdf
+      // This avoids Windows drive-letter issues in Typst's image() calls
+      await convertToPdf(workDir, inputPath, resourcePathArgs);
+    } else {
+      try {
+        await execFileAsync(
+          PANDOC_BIN,
+          [
+            inputPath,
+            "--from",
+            PANDOC_FROM_FORMAT,
+            ...config.extraArgs,
+            ...resourcePathArgs,
+            "-o",
+            outputPath,
+          ],
+          {
+            cwd: workDir,
+            timeout: 30_000,
+            maxBuffer: 8 * 1024 * 1024,
+          }
+        );
+      } catch (err) {
+        const stderr =
+          err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
+        throw new ConvertError(500, `Pandoc falló: ${stderr || "error desconocido"}`);
+      }
     }
 
-    const output = await readFile(outputPath);
+    const output = await readFile(path.join(workDir, outputPath));
 
     return new NextResponse(new Uint8Array(output), {
       status: 200,
