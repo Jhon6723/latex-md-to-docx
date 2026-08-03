@@ -43,9 +43,9 @@ const PLATFORMS = {
   },
   "win32-x64": {
     pandoc: `https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-windows-x86_64.zip`,
-    pandocBin: (extracted) => path.join(extracted, "pandoc.exe"),
+    pandocBin: (extracted) => path.join(extracted, `pandoc-${PANDOC_VERSION}`, "pandoc.exe"),
     typst: `https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-pc-windows-msvc.zip`,
-    typstBin: (extracted) => path.join(extracted, "typst.exe"),
+    typstBin: (extracted) => path.join(extracted, "typst-x86_64-pc-windows-msvc", "typst.exe"),
   },
 };
 
@@ -70,7 +70,20 @@ async function extractArchive(archivePath, destDir, isZip) {
   const { execFileSync } = await import("node:child_process");
   mkdirSync(destDir, { recursive: true });
   if (isZip) {
-    execFileSync("unzip", ["-q", "-o", archivePath, "-d", destDir], { stdio: "inherit" });
+    if (process.platform === "win32") {
+      execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `Expand-Archive -LiteralPath '${archivePath.replaceAll("'", "''")}' -DestinationPath '${destDir.replaceAll("'", "''")}' -Force`,
+        ],
+        { stdio: "inherit" },
+      );
+    } else {
+      execFileSync("unzip", ["-q", "-o", archivePath, "-d", destDir], { stdio: "inherit" });
+    }
   } else if (archivePath.endsWith(".tar.xz")) {
     execFileSync("tar", ["xf", archivePath, "-C", destDir, "--strip-components=1"], { stdio: "inherit" });
   } else {
