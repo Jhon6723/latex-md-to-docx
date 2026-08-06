@@ -23,6 +23,7 @@ const LOCAL_PANDOC = path.join(process.cwd(), "bin", `pandoc${EXE}`);
 const LOCAL_TYPST = path.join(process.cwd(), "bin", `typst${EXE}`);
 const PANDOC_BIN = existsSync(LOCAL_PANDOC) ? LOCAL_PANDOC : "pandoc";
 const TYPST_BIN = existsSync(LOCAL_TYPST) ? LOCAL_TYPST : "typst";
+const MAX_EQUATION_WIDTH_PT = 430;
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"]);
 
@@ -72,6 +73,20 @@ function fixTypstPaths(typContent: string, workDir: string): string {
   });
 }
 
+function fitLongEquations(typContent: string): string {
+  const showRule = `#show math.equation: it => {
+  let measured = measure(it)
+  if measured.width > ${MAX_EQUATION_WIDTH_PT}pt {
+    scale(x: (${MAX_EQUATION_WIDTH_PT}pt / measured.width) * 100%, reflow: true, it)
+  } else {
+    it
+  }
+}
+
+`;
+  return showRule + typContent;
+}
+
 async function convertToPdf(workDir: string, inputPath: string, resourcePathArgs: string[]): Promise<void> {
   // Step 1: Generate .typ file with Pandoc (no --pdf-engine)
   const typPath = "intermediate.typ";
@@ -98,9 +113,9 @@ async function convertToPdf(workDir: string, inputPath: string, resourcePathArgs
     throw new ConvertError(500, `Pandoc falló: ${stderr || "error desconocido"}`);
   }
 
-  // Step 2: Fix absolute paths in the .typ file (Windows drive-letter issue)
+  // Step 2: Normalize the generated .typ file (paths and equation widths)
   const typContent = await readFile(path.join(workDir, typPath), "utf-8");
-  const fixedContent = fixTypstPaths(typContent, workDir);
+  const fixedContent = fitLongEquations(fixTypstPaths(typContent, workDir));
   await writeFile(path.join(workDir, typPath), fixedContent, "utf-8");
 
   // Step 3: Compile .typ to PDF with Typst
